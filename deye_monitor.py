@@ -14,7 +14,8 @@ WA_PHONE_NUMBER = os.environ.get("WA_PHONE_NUMBER")
 WA_API_KEY = os.environ.get("WA_API_KEY")
 
 REGION_URL = "https://eu1-developer.deyecloud.com/v1.0"
-ALERT_THRESHOLD = 20  # Warn if below 20%
+# Pulls the threshold from GitHub Variables, defaults to 20 if missing
+ALERT_THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", 20))
 
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode('utf-8')).hexdigest()
