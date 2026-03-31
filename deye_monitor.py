@@ -13,9 +13,9 @@ DEVICE_SN = os.environ.get("DEVICE_SN")
 WA_PHONE_NUMBER = os.environ.get("WA_PHONE_NUMBER")
 WA_API_KEY = os.environ.get("WA_API_KEY")
 
-REGION_URL = "https://eu1-developer.deyecloud.com/v1.0"
 # Pulls the threshold from GitHub Variables, defaults to 20 if missing
 ALERT_THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", 20))
+REGION_URL = "https://eu1-developer.deyecloud.com/v1.0"
 
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode('utf-8')).hexdigest()
@@ -38,36 +38,38 @@ def get_deye_token():
     return None
 
 def get_battery_soc(token):
-    # Back to the endpoint that gives actual real-time values
-    url = f"{REGION_URL}/device/latest" 
+    url = f"{REGION_URL}/device/latest"
     
     headers = {
         "Content-Type": "application/json", 
         "Authorization": f"Bearer {token}"
     }
     
-    payload = {
-        "deviceList": [DEVICE_SN]
-    }
+    payload = {"deviceList": [DEVICE_SN]}
     
     try:
         response = requests.post(url, json=payload, headers=headers)
         data = response.json()
         
-        # Let's see the glorious data values!
-        print("RAW API RESPONSE:", data) 
+        # Dig into the JSON to find the array of sensor data
+        device_data_list = data.get("deviceDataList", [])
+        if not device_data_list:
+            return None
+            
+        sensors = device_data_list[0].get("dataList", [])
         
-        # We are temporarily returning 100 just to keep the script 
-        # from crashing while we look at the printed log.
-        return 100.0
+        # Loop through the sensors until we find BMSSOC
+        for sensor in sensors:
+            if sensor.get("key") == "BMSSOC":
+                return float(sensor.get("value"))
+                
+        return None
     except Exception as e:
         print(f"Error reading battery: {e}")
         return None
 
 def send_whatsapp_alert(soc):
     message = f"⚠️ Low Battery Alert! Your Deye inverter battery is currently at {soc}%."
-    
-    # Send the request to CallMeBot
     url = "https://api.callmebot.com/whatsapp.php"
     params = {
         "phone": WA_PHONE_NUMBER,
@@ -76,7 +78,6 @@ def send_whatsapp_alert(soc):
     }
     
     try:
-        # requests.get will automatically safely encode the message and phone number
         response = requests.get(url, params=params)
         if response.status_code == 200:
             print(f"Alert successfully sent to WhatsApp: {soc}%")
@@ -94,7 +95,9 @@ def main():
             if soc < ALERT_THRESHOLD:
                 send_whatsapp_alert(soc)
             else:
-                print("Battery is healthy. No alert sent.")
+                print(f"Battery is healthy ({soc}%). Threshold is {ALERT_THRESHOLD}%. No alert sent.")
+        else:
+            print("Could not find BMSSOC in the data.")
 
 if __name__ == "__main__":
     main()
