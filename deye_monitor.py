@@ -9,13 +9,16 @@ APP_SECRET = os.environ.get("APP_SECRET")
 DEYE_EMAIL = os.environ.get("DEYE_EMAIL")
 DEYE_PASSWORD = os.environ.get("DEYE_PASSWORD")
 DEVICE_SN = os.environ.get("DEVICE_SN")
+
+# Pull the comma-separated lists!
 WA_PHONE_NUMBER = os.environ.get("WA_PHONE_NUMBER")
 WA_API_KEY = os.environ.get("WA_API_KEY")
+WA_PHONE_NUMBERS = os.environ.get("WA_PHONE_NUMBERS", "")
+WA_API_KEYS = os.environ.get("WA_API_KEYS", "")
 
-# Pulls configurable variables, with fallbacks just in case
 ALERT_THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", 20))
 HIGH_ALERT_THRESHOLD = float(os.environ.get("HIGH_ALERT_THRESHOLD", 95))
-ALERT_COOLDOWN = int(os.environ.get("ALERT_COOLDOWN", 60)) * 60  # Converts minutes to seconds
+ALERT_COOLDOWN = int(os.environ.get("ALERT_COOLDOWN", 60)) * 60  
 
 REGION_URL = "https://eu1-developer.deyecloud.com/v1.0"
 STATE_FILE = "last_alert_time.txt"
@@ -56,7 +59,6 @@ def get_battery_soc(token):
         return None
 
 def can_send_alert():
-    """Checks the state file to see if enough time has passed since the last alert."""
     if not os.path.exists(STATE_FILE):
         return True
     try:
@@ -67,22 +69,35 @@ def can_send_alert():
         return True
 
 def update_alert_time():
-    """Saves the current timestamp to the state file."""
     with open(STATE_FILE, "w") as f:
         f.write(str(time.time()))
 
 def send_whatsapp_alert(message):
+    # Turn the comma-separated strings into actual Python lists
+    phones = [p.strip() for p in WA_PHONE_NUMBERS.split(",") if p.strip()]
+    keys = [k.strip() for k in WA_API_KEYS.split(",") if k.strip()]
+
+    # Safety check: Make sure we have a key for every phone number
+    if len(phones) != len(keys):
+        print("ERROR: The number of phones doesn't match the number of API keys in GitHub Secrets!")
+        return
+
     url = "https://api.callmebot.com/whatsapp.php"
-    params = {"phone": WA_PHONE_NUMBER, "text": message, "apikey": WA_API_KEY}
-    try:
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            print(f"Alert sent to WhatsApp: {message}")
-            update_alert_time()  # Save the exact time we sent this alert!
-        else:
-            print(f"CallMeBot failed: {response.text}")
-    except Exception as e:
-        print(f"Error sending WhatsApp alert: {e}")
+    
+    # Loop through the list and send a message to each person
+    for i in range(len(phones)):
+        params = {"phone": phones[i], "text": message, "apikey": keys[i]}
+        try:
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                print(f"Alert successfully sent to {phones[i]}")
+            else:
+                print(f"CallMeBot failed for {phones[i]}: {response.text}")
+        except Exception as e:
+            print(f"Error sending to {phones[i]}: {e}")
+            
+    # Save the timestamp after attempting to send to everyone
+    update_alert_time()
 
 def main():
     token = get_deye_token()
@@ -90,20 +105,17 @@ def main():
         soc = get_battery_soc(token)
         if soc is not None:
             print(f"Current Battery SOC: {soc}%")
-            
-            # Determine if we need to send a Low or High alert
             alert_msg = None
             if soc <= ALERT_THRESHOLD:
-                alert_msg = f"⚠️ Low Battery Alert! Your Deye inverter is at {soc}%."
+                alert_msg = f"⚠️ Low Battery Alert! The Deye inverter is at {soc}%."
             elif soc >= HIGH_ALERT_THRESHOLD:
-                alert_msg = f"✅ High Battery Alert! Your Deye inverter is fully charged at {soc}%."
+                alert_msg = f"✅ High Battery Alert! The Deye inverter is fully charged at {soc}%."
                 
-            # If an alert condition is met, check the cooldown memory
             if alert_msg:
                 if can_send_alert():
                     send_whatsapp_alert(alert_msg)
                 else:
-                    print(f"Alert condition met, but still in {ALERT_COOLDOWN/60} minute cooldown. No message sent.")
+                    print(f"Alert condition met, but still in {ALERT_COOLDOWN/60} min cooldown. No message sent.")
             else:
                 print("Battery is within normal range. No alert sent.")
         else:
