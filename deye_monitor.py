@@ -38,19 +38,26 @@ def get_deye_token():
     return None
 
 def get_battery_soc(token):
-    url = f"{REGION_URL}/device/realData"
+    # The officially documented Deye API endpoint for current data
+    url = f"{REGION_URL}/device/latest" 
+    
     headers = {
         "Content-Type": "application/json", 
         "Authorization": f"Bearer {token}"
     }
-    payload = {"deviceSn": DEVICE_SN}
+    
+    # Notice we changed "deviceSn" to "deviceSnList" and added brackets [ ]
+    payload = {"deviceSnList": [DEVICE_SN]} 
+    
     try:
         response = requests.post(url, json=payload, headers=headers)
         data = response.json()
         
-        # Add this line to print the raw data!
+        # We will keep this here just to see what the new data looks like!
         print("RAW API RESPONSE:", data) 
         
+        # We will try to grab the bmsSoc. If it's buried in a different list, 
+        # the print statement above will tell us exactly where it is!
         return float(data.get("data", {}).get("bmsSoc", 100))
     except Exception as e:
         print(f"Error reading battery: {e}")
