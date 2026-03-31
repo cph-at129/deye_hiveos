@@ -33,6 +33,8 @@ jobs:
           DEVICE_SN: ${{ secrets.DEVICE_SN }}
           WA_PHONE_NUMBER: ${{ secrets.WA_PHONE_NUMBER }}
           WA_API_KEY: ${{ secrets.WA_API_KEY }}
+          WA_PHONE_NUMBERS: ${{ secrets.WA_PHONE_NUMBERS }}
+          WA_API_KEYS: ${{ secrets.WA_API_KEYS }}
           ALERT_THRESHOLD: ${{ vars.ALERT_THRESHOLD }}
           HIGH_ALERT_THRESHOLD: ${{ vars.HIGH_ALERT_THRESHOLD }}
           ALERT_COOLDOWN: ${{ vars.ALERT_COOLDOWN }}
