@@ -39,7 +39,10 @@ def get_deye_token():
 
 def get_battery_soc(token):
     url = f"{REGION_URL}/device/realData"
-    headers = {"Content-Type": "application/json", "Token": token}
+    headers = {
+        "Content-Type": "application/json", 
+        "Authorization": f"Bearer {token}"
+    }
     payload = {"deviceSn": DEVICE_SN}
     try:
         response = requests.post(url, json=payload, headers=headers)
