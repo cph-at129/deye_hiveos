@@ -44,6 +44,10 @@ def get_battery_soc(token):
     try:
         response = requests.post(url, json=payload, headers=headers)
         data = response.json()
+        
+        # Add this line to print the raw data!
+        print("RAW API RESPONSE:", data) 
+        
         return float(data.get("data", {}).get("bmsSoc", 100))
     except Exception as e:
         print(f"Error reading battery: {e}")
