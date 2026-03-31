@@ -107,9 +107,9 @@ def main():
             print(f"Current Battery SOC: {soc}%")
             alert_msg = None
             if soc <= ALERT_THRESHOLD:
-                alert_msg = f"⚠️ Low Battery Alert! The Deye inverter is at {soc}%."
+                alert_msg = f"⚠️ Батерията е почти изтощена! Нивото на батерията е {soc}%."
             elif soc >= HIGH_ALERT_THRESHOLD:
-                alert_msg = f"✅ High Battery Alert! The Deye inverter is fully charged at {soc}%."
+                alert_msg = f"✅ Батерията е почти заредена! Нивото на батерията е {soc}%."
                 
             if alert_msg:
                 if can_send_alert():
