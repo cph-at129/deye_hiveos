@@ -29,4 +29,5 @@ jobs:
           DEVICE_SN: ${{ secrets.DEVICE_SN }}
           WA_PHONE_NUMBER: ${{ secrets.WA_PHONE_NUMBER }}
           WA_API_KEY: ${{ secrets.WA_API_KEY }}
+          ALERT_THRESHOLD: ${{ vars.ALERT_THRESHOLD }}
         run: python deye_monitor.py
