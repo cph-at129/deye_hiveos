@@ -47,7 +47,7 @@ def get_battery_soc(token):
     }
     
     # No brackets this time! Just the raw serial number.
-    payload = {"deviceSn": DEVICE_SN} 
+    payload = {"deviceList": DEVICE_SN} 
     
     try:
         response = requests.post(url, json=payload, headers=headers)
