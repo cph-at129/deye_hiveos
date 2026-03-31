@@ -1,0 +1,32 @@
+name: Deye Battery Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # This tells GitHub to run it every 15 minutes
+  workflow_dispatch:        # This lets you run it manually by clicking a button
+
+jobs:
+  check-battery:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Install Requirements
+        run: pip install requests
+        
+      - name: Run Monitor Script
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          DEYE_EMAIL: ${{ secrets.DEYE_EMAIL }}
+          DEYE_PASSWORD: ${{ secrets.DEYE_PASSWORD }}
+          DEVICE_SN: ${{ secrets.DEVICE_SN }}
+          WA_PHONE_NUMBER: ${{ secrets.WA_PHONE_NUMBER }}
+          WA_API_KEY: ${{ secrets.WA_API_KEY }}
+        run: python deye_monitor.py
