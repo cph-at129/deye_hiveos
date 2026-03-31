@@ -2,8 +2,12 @@ name: Deye Battery Monitor
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # This tells GitHub to run it every 15 minutes
-  workflow_dispatch:        # This lets you run it manually by clicking a button
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# NEW: Give the bot permission to save files to your repository
+permissions:
+  contents: write
 
 jobs:
   check-battery:
@@ -30,4 +34,15 @@ jobs:
           WA_PHONE_NUMBER: ${{ secrets.WA_PHONE_NUMBER }}
           WA_API_KEY: ${{ secrets.WA_API_KEY }}
           ALERT_THRESHOLD: ${{ vars.ALERT_THRESHOLD }}
+          HIGH_ALERT_THRESHOLD: ${{ vars.HIGH_ALERT_THRESHOLD }}
+          ALERT_COOLDOWN: ${{ vars.ALERT_COOLDOWN }}
         run: python deye_monitor.py
+
+      # NEW: Save the memory file so it remembers for next time
+      - name: Save Alert State
+        run: |
+          git config --global user.name 'GitHub Action Bot'
+          git config --global user.email 'action@github.com'
+          git add last_alert_time.txt || true
+          git commit -m "Update alert cooldown timer" || true
+          git push || true
