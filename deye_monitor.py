@@ -38,25 +38,27 @@ def get_deye_token():
     return None
 
 def get_battery_soc(token):
-    # The specific endpoint designed to accept Serial Numbers!
-    url = f"{REGION_URL}/device/measurePoints" 
+    # Back to the endpoint that gives actual real-time values
+    url = f"{REGION_URL}/device/latest" 
     
     headers = {
         "Content-Type": "application/json", 
         "Authorization": f"Bearer {token}"
     }
     
-    # Back to the simple, single serial number format
+    # No brackets this time! Just the raw serial number.
     payload = {"deviceSn": DEVICE_SN} 
     
     try:
         response = requests.post(url, json=payload, headers=headers)
         data = response.json()
         
-        # Keep this print statement so we can see the glorious data!
+        # Let's see the glorious data values!
         print("RAW API RESPONSE:", data) 
         
-        return float(data.get("data", {}).get("bmsSoc", 100))
+        # We are temporarily returning 100 just to keep the script 
+        # from crashing while we look at the printed log.
+        return 100.0
     except Exception as e:
         print(f"Error reading battery: {e}")
         return None
