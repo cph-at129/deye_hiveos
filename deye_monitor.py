@@ -31,7 +31,7 @@ def _env_float(name, default):
 
 
 HIVEOS_API_BASE = _env_str("HIVEOS_API_BASE", "https://api2.hiveos.farm/api/v2").rstrip("/")
-MINING_START_SOC = _env_float("MINING_START_SOC", 95)
+MINING_START_SOC = _env_float("MINING_START_SOC", 80)
 MINING_STOP_SOC = _env_float("MINING_STOP_SOC", 40)
 
 REGION_URL = "https://eu1-developer.deyecloud.com/v1.0"
