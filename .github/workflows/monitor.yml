@@ -23,6 +23,11 @@ jobs:
       - name: Install Requirements
         run: pip install requests
 
+      - name: Debug env
+        run: |
+          echo "TOKEN: ${HIVEOS_API_TOKEN:+SET}"
+          echo "FARMS: ${HIVE_FARM_IDS:+SET}"
+
       - name: Run Monitor Script
         env:
           APP_ID: ${{ secrets.APP_ID }}
