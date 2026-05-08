@@ -5,7 +5,6 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
-# NEW: Give the bot permission to save files to your repository
 permissions:
   contents: write
 
@@ -15,15 +14,15 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          
+
       - name: Install Requirements
         run: pip install requests
-        
+
       - name: Run Monitor Script
         env:
           APP_ID: ${{ secrets.APP_ID }}
@@ -31,20 +30,17 @@ jobs:
           DEYE_EMAIL: ${{ secrets.DEYE_EMAIL }}
           DEYE_PASSWORD: ${{ secrets.DEYE_PASSWORD }}
           DEVICE_SN: ${{ secrets.DEVICE_SN }}
-          WA_PHONE_NUMBER: ${{ secrets.WA_PHONE_NUMBER }}
-          WA_API_KEY: ${{ secrets.WA_API_KEY }}
-          WA_PHONE_NUMBERS: ${{ secrets.WA_PHONE_NUMBERS }}
-          WA_API_KEYS: ${{ secrets.WA_API_KEYS }}
-          ALERT_THRESHOLD: ${{ vars.ALERT_THRESHOLD }}
-          HIGH_ALERT_THRESHOLD: ${{ vars.HIGH_ALERT_THRESHOLD }}
-          ALERT_COOLDOWN: ${{ vars.ALERT_COOLDOWN }}
+          HIVEOS_API_TOKEN: ${{ secrets.HIVEOS_API_TOKEN }}
+          HIVE_FARM_IDS: ${{ secrets.HIVE_FARM_IDS }}
+          HIVEOS_API_BASE: ${{ vars.HIVEOS_API_BASE }}
+          MINING_START_SOC: ${{ vars.MINING_START_SOC }}
+          MINING_STOP_SOC: ${{ vars.MINING_STOP_SOC }}
         run: python deye_monitor.py
 
-      # NEW: Save the memory file so it remembers for next time
-      - name: Save Alert State
+      - name: Save Mining State
         run: |
           git config --global user.name 'GitHub Action Bot'
           git config --global user.email 'action@github.com'
-          git add last_alert_time.txt || true
-          git commit -m "Update alert cooldown timer" || true
+          git add mining_control_state.txt || true
+          git commit -m "Update Hive mining control state" || true
           git push || true

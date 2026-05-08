@@ -1,37 +1,53 @@
-import os
-import requests
 import hashlib
-import time
+import os
+import re
 
-# Securely pull credentials from GitHub Vault
+import requests
+
+# Deye Cloud (GitHub Actions secrets)
 APP_ID = os.environ.get("APP_ID")
 APP_SECRET = os.environ.get("APP_SECRET")
 DEYE_EMAIL = os.environ.get("DEYE_EMAIL")
 DEYE_PASSWORD = os.environ.get("DEYE_PASSWORD")
 DEVICE_SN = os.environ.get("DEVICE_SN")
 
-# Pull the comma-separated lists!
-WA_PHONE_NUMBER = os.environ.get("WA_PHONE_NUMBER")
-WA_API_KEY = os.environ.get("WA_API_KEY")
-WA_PHONE_NUMBERS = os.environ.get("WA_PHONE_NUMBERS", "")
-WA_API_KEYS = os.environ.get("WA_API_KEYS", "")
+# Hive OS API v2 (secrets / vars)
+HIVEOS_API_TOKEN = os.environ.get("HIVEOS_API_TOKEN", "").strip()
+HIVE_FARM_IDS = os.environ.get("HIVE_FARM_IDS", "").strip()
 
-ALERT_THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", 20))
-HIGH_ALERT_THRESHOLD = float(os.environ.get("HIGH_ALERT_THRESHOLD", 95))
-ALERT_COOLDOWN = int(os.environ.get("ALERT_COOLDOWN", 60)) * 60  
+
+def _env_str(name, default):
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip()
+
+
+def _env_float(name, default):
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return float(raw)
+
+
+HIVEOS_API_BASE = _env_str("HIVEOS_API_BASE", "https://api2.hiveos.farm/api/v2").rstrip("/")
+MINING_START_SOC = _env_float("MINING_START_SOC", 95)
+MINING_STOP_SOC = _env_float("MINING_STOP_SOC", 40)
 
 REGION_URL = "https://eu1-developer.deyecloud.com/v1.0"
-STATE_FILE = "last_alert_time.txt"
+MINING_STATE_FILE = "mining_control_state.txt"
+
 
 def hash_password(pwd):
-    return hashlib.sha256(pwd.encode('utf-8')).hexdigest()
+    return hashlib.sha256(pwd.encode("utf-8")).hexdigest()
+
 
 def get_deye_token():
     url = f"{REGION_URL}/account/token?appId={APP_ID}"
     payload = {"appSecret": APP_SECRET, "email": DEYE_EMAIL, "password": hash_password(DEYE_PASSWORD)}
     headers = {"Content-Type": "application/json"}
     try:
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         data = response.json()
         if data.get("success"):
             return data.get("accessToken")
@@ -39,12 +55,13 @@ def get_deye_token():
         print(f"Error connecting to Deye: {e}")
     return None
 
+
 def get_battery_soc(token):
     url = f"{REGION_URL}/device/latest"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     payload = {"deviceList": [DEVICE_SN]}
     try:
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         data = response.json()
         device_data_list = data.get("deviceDataList", [])
         if not device_data_list:
@@ -58,68 +75,160 @@ def get_battery_soc(token):
         print(f"Error reading battery: {e}")
         return None
 
-def can_send_alert():
-    if not os.path.exists(STATE_FILE):
-        return True
-    try:
-        with open(STATE_FILE, "r") as f:
-            last_alert_time = float(f.read().strip())
-        return (time.time() - last_alert_time) >= ALERT_COOLDOWN
-    except Exception:
-        return True
 
-def update_alert_time():
-    with open(STATE_FILE, "w") as f:
-        f.write(str(time.time()))
+def _hive_auth_headers():
+    """Hive accepts either a raw personal API token or a full Bearer value in Authorization."""
+    token = HIVEOS_API_TOKEN
+    if not token:
+        return {}
+    if token.lower().startswith("bearer "):
+        return {"Authorization": token}
+    return {"Authorization": f"Bearer {token}"}
 
-def send_whatsapp_alert(message):
-    # Turn the comma-separated strings into actual Python lists
-    phones = [p.strip() for p in WA_PHONE_NUMBERS.split(",") if p.strip()]
-    keys = [k.strip() for k in WA_API_KEYS.split(",") if k.strip()]
 
-    # Safety check: Make sure we have a key for every phone number
-    if len(phones) != len(keys):
-        print("ERROR: The number of phones doesn't match the number of API keys in GitHub Secrets!")
-        return
-
-    url = "https://api.callmebot.com/whatsapp.php"
-    
-    # Loop through the list and send a message to each person
-    for i in range(len(phones)):
-        params = {"phone": phones[i], "text": message, "apikey": keys[i]}
+def _parse_farm_ids():
+    out = []
+    for part in re.split(r"[\s,]+", HIVE_FARM_IDS):
+        part = part.strip()
+        if not part:
+            continue
         try:
-            response = requests.get(url, params=params)
-            if response.status_code == 200:
-                print(f"Alert successfully sent to {phones[i]}")
-            else:
-                print(f"CallMeBot failed for {phones[i]}: {response.text}")
-        except Exception as e:
-            print(f"Error sending to {phones[i]}: {e}")
-            
-    # Save the timestamp after attempting to send to everyone
-    update_alert_time()
+            out.append(int(part))
+        except ValueError:
+            print(f"WARNING: skip invalid farm id {part!r}")
+    return out
+
+
+def hive_list_worker_ids(farm_id, session):
+    url = f"{HIVEOS_API_BASE}/farms/{farm_id}/workers"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        **_hive_auth_headers(),
+    }
+    r = session.get(url, headers=headers, timeout=120)
+    if r.status_code != 200:
+        print(f"Hive GET workers farm={farm_id} failed HTTP {r.status_code}: {r.text[:500]}")
+        return []
+    payload = r.json()
+    rows = payload.get("data")
+    if rows is None:
+        print(f"Hive GET workers farm={farm_id}: unexpected JSON (no 'data'): {str(payload)[:300]}")
+        return []
+    ids = []
+    for w in rows:
+        wid = w.get("id")
+        if wid is not None:
+            ids.append(int(wid))
+    return ids
+
+
+def hive_worker_command(farm_id, worker_id, body, session):
+    url = f"{HIVEOS_API_BASE}/farms/{farm_id}/workers/{worker_id}/command"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        **_hive_auth_headers(),
+    }
+    r = session.post(url, headers=headers, json=body, timeout=120)
+    if r.status_code not in (200, 201):
+        print(f"Hive POST command farm={farm_id} worker={worker_id} HTTP {r.status_code}: {r.text[:500]}")
+        return False
+    return True
+
+
+def hive_set_mining(mining_on):
+    """
+    mining_on True -> miner start; False -> miner stop.
+    Uses command 'exec' so behavior matches shell `miner start` / `miner stop` on Hiveon OS workers.
+    """
+    farm_ids = _parse_farm_ids()
+    if not farm_ids:
+        print("ERROR: HIVE_FARM_IDS is empty or invalid.")
+        return False
+    cmd = "miner start" if mining_on else "miner stop"
+    body = {"command": "exec", "data": {"cmd": cmd}}
+    session = requests.Session()
+    ok_all = True
+    for farm_id in farm_ids:
+        worker_ids = hive_list_worker_ids(farm_id, session)
+        if not worker_ids:
+            print(f"Farm {farm_id}: no workers found (or list failed); skipping.")
+            ok_all = False
+            continue
+        for wid in worker_ids:
+            if not hive_worker_command(farm_id, wid, body, session):
+                ok_all = False
+    return ok_all
+
+
+def read_mining_state():
+    """
+    Persisted last successful Hive intent: 'on' or 'off'.
+    Missing file -> 'off' so the first time SOC >= start threshold we issue miner start.
+    """
+    if not os.path.exists(MINING_STATE_FILE):
+        return "off"
+    try:
+        with open(MINING_STATE_FILE, "r", encoding="utf-8") as f:
+            v = f.read().strip().lower()
+        return v if v in ("on", "off") else "off"
+    except OSError:
+        return "off"
+
+
+def write_mining_state(state):
+    with open(MINING_STATE_FILE, "w", encoding="utf-8") as f:
+        f.write(state)
+
 
 def main():
+    if MINING_START_SOC <= MINING_STOP_SOC:
+        print(
+            f"ERROR: MINING_START_SOC ({MINING_START_SOC}) must be greater than "
+            f"MINING_STOP_SOC ({MINING_STOP_SOC})."
+        )
+        return
+    if not HIVEOS_API_TOKEN or not HIVE_FARM_IDS:
+        print("ERROR: Set HIVEOS_API_TOKEN and HIVE_FARM_IDS in the environment (GitHub secrets).")
+        return
+
     token = get_deye_token()
-    if token:
-        soc = get_battery_soc(token)
-        if soc is not None:
-            print(f"Current Battery SOC: {soc}%")
-            alert_msg = None
-            if soc <= ALERT_THRESHOLD:
-                alert_msg = f"⚠️ Батерията е почти изтощена! Нивото на батерията е {soc}%."
-            elif soc >= HIGH_ALERT_THRESHOLD:
-                alert_msg = f"✅ Батерията е почти заредена! Нивото на батерията е {soc}%."
-                
-            if alert_msg:
-                if can_send_alert():
-                    send_whatsapp_alert(alert_msg)
-                else:
-                    print(f"Alert condition met, but still in {ALERT_COOLDOWN/60} min cooldown. No message sent.")
-            else:
-                print("Battery is within normal range. No alert sent.")
-        else:
-            print("Could not find BMSSOC in the data.")
+    if not token:
+        print("Could not obtain Deye access token.")
+        return
+
+    soc = get_battery_soc(token)
+    if soc is None:
+        print("Could not find BMSSOC in the data.")
+        return
+
+    print(f"Current Battery SOC: {soc}%")
+
+    if soc >= MINING_START_SOC:
+        desired = "on"
+    elif soc < MINING_STOP_SOC:
+        desired = "off"
+    else:
+        print(
+            f"SOC between stop ({MINING_STOP_SOC}%) and start ({MINING_START_SOC}%) — "
+            "no Hive action (hysteresis dead band)."
+        )
+        return
+
+    persisted = read_mining_state()
+    if desired == persisted:
+        print(f"Hive mining state already {persisted!r}; no API calls.")
+        return
+
+    action = "START" if desired == "on" else "STOP"
+    print(f"Applying Hive {action} (persisted={persisted!r} -> target={desired!r}).")
+    if hive_set_mining(desired == "on"):
+        write_mining_state(desired)
+        print(f"Hive {action} succeeded; wrote {MINING_STATE_FILE} = {desired!r}.")
+    else:
+        print(f"Hive {action} failed; leaving {MINING_STATE_FILE} unchanged for retry.")
+
 
 if __name__ == "__main__":
     main()
